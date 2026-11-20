@@ -1,0 +1,925 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Parametric Door Jamb Visualizer</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Three.js Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- OrbitControls -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <!-- FontAwesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            user-select: none;
+        }
+        #webgl-container {
+            width: 100vw;
+            height: 100vh;
+            display: block;
+        }
+        /* Custom scrollbars for controls panel */
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: rgba(15, 23, 42, 0.6);
+            border-radius: 8px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: rgba(51, 65, 85, 0.8);
+            border-radius: 8px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: rgba(71, 85, 105, 1);
+        }
+        /* Overlay text styles for 3D label tags */
+        .dim-label {
+            position: absolute;
+            transform: translate(-50%, -100%);
+            pointer-events: none;
+            white-space: nowrap;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            font-size: 11px;
+            font-weight: 700;
+            padding: 2px 6px;
+            border-radius: 4px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+            transition: opacity 0.2s ease-in-out;
+            backdrop-filter: blur(4px);
+        }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100">
+
+    <!-- WebGL Canvas Container -->
+    <div id="webgl-container"></div>
+
+    <!-- 2D Canvas / HTML Overlay for Dimensions -->
+    <div id="labels-container" class="absolute inset-0 pointer-events-none overflow-hidden"></div>
+
+    <!-- Top Left Quick Title & Legend Panel -->
+    <div class="absolute top-4 left-4 z-10 flex flex-col gap-2">
+        <div class="bg-slate-900/80 backdrop-blur-md border border-slate-700/60 rounded-xl p-3 shadow-xl max-w-xs">
+            <h1 class="text-base font-bold text-emerald-400 flex items-center gap-2">
+                <i class="fa-solid fa-door-open"></i> Door Jamb Visualizer 3D
+            </h1>
+            <p class="text-xs text-slate-400 mt-1">Parametric CAD-level section profile rendering with adjustable dimensions and grooves.</p>
+        </div>
+    </div>
+
+    <!-- Floating Right Control Panel -->
+    <div class="absolute top-4 right-4 bottom-4 z-10 w-96 max-w-[calc(100vw-2rem)] bg-slate-900/90 backdrop-blur-md border border-slate-800 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+        
+        <!-- Header Toolbar -->
+        <div class="px-4 py-3 bg-slate-800/80 border-b border-slate-700/60 flex justify-between items-center gap-2">
+            <span class="font-bold text-sm text-slate-200 flex items-center gap-2 truncate">
+                <i class="fa-solid fa-sliders text-emerald-400"></i> Controls & Dimensions
+            </span>
+            <div class="flex items-center gap-1.5 flex-wrap justify-end">
+                <!-- Rotate Toggle Button -->
+                <button id="btnRotate" title="Toggle Auto Rotation" class="p-2 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg text-xs transition-colors">
+                    <i class="fa-solid fa-rotate"></i>
+                </button>
+                <button id="btnDarkBg" title="Toggle Dark/Light Background" class="p-2 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg text-xs transition-colors">
+                    <i class="fa-solid fa-moon"></i>
+                </button>
+                <button id="btnWireframe" title="Toggle Wireframe Mode" class="p-2 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg text-xs transition-colors">
+                    <i class="fa-solid fa-cubes"></i>
+                </button>
+                <!-- Toggle Grooves Visibility Button -->
+                <button id="btnToggleGrooves" title="Show / Hide L & R Grooves" class="p-2 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-lg text-xs transition-colors font-semibold flex items-center gap-1">
+                    <i class="fa-solid fa-eye"></i> Grooves
+                </button>
+                <!-- Toggle Linings Visibility Button -->
+                <button id="btnToggleLinings" title="Show / Hide Side Linings" class="p-2 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-lg text-xs transition-colors font-semibold flex items-center gap-1">
+                    <i class="fa-solid fa-eye"></i> Linings
+                </button>
+                <button id="btnToggleDims" title="Show / Hide 3D Dimensions" class="p-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs transition-colors font-semibold flex items-center gap-1">
+                    <i class="fa-solid fa-ruler-combined"></i> Dims
+                </button>
+            </div>
+        </div>
+
+        <!-- Scrollable Controls Container -->
+        <div class="p-4 overflow-y-auto custom-scrollbar flex-1 space-y-4 text-xs">
+
+            <!-- Quick Presets -->
+            <div class="grid grid-cols-2 gap-2">
+                <button id="btnPreset108" class="py-2 px-3 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-lg shadow transition-colors text-center flex items-center justify-center gap-1.5">
+                    <i class="fa-solid fa-check"></i> Preset 108mm Jamb
+                </button>
+                <button id="btnResetParams" class="py-2 px-3 bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 font-semibold rounded-lg transition-colors text-center flex items-center justify-center gap-1.5">
+                    <i class="fa-solid fa-rotate-left"></i> Reset Defaults
+                </button>
+            </div>
+
+            <!-- Central Green Jamb Section -->
+            <div class="bg-slate-800/50 p-3 rounded-xl border border-slate-700/50 space-y-3">
+                <div class="flex items-center justify-between border-b border-slate-700/50 pb-1.5">
+                    <span class="font-bold text-[11px] uppercase tracking-wider text-emerald-400">Central Green Jamb Core</span>
+                    <div class="flex items-center gap-2">
+                        <span id="jambColorHex" class="font-mono text-slate-400 text-[10px]">#ECF9EC</span>
+                        <input type="color" id="jambColor" value="#ECF9EC" class="w-6 h-6 rounded cursor-pointer p-0 bg-transparent border-0">
+                    </div>
+                </div>
+
+                <!-- Overall Width -->
+                <div>
+                    <div class="flex justify-between items-center mb-1">
+                        <label for="jambWidth" class="font-medium text-slate-300">Overall Width</label>
+                        <div class="flex items-center gap-1">
+                            <input type="number" id="jambWidthNum" value="108" class="w-14 bg-slate-950 border border-slate-700 rounded px-1.5 py-0.5 text-right font-mono text-emerald-400 font-bold text-xs focus:outline-none focus:border-emerald-500">
+                            <span class="text-slate-500 text-[10px]">mm</span>
+                        </div>
+                    </div>
+                    <input type="range" id="jambWidth" min="60" max="250" value="108" step="1" class="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-emerald-500">
+                </div>
+
+                <!-- Core Thickness -->
+                <div>
+                    <div class="flex justify-between items-center mb-1">
+                        <label for="jambThickness" class="font-medium text-slate-300">Jamb Thickness</label>
+                        <div class="flex items-center gap-1">
+                            <input type="number" id="jambThicknessNum" value="35" class="w-14 bg-slate-950 border border-slate-700 rounded px-1.5 py-0.5 text-right font-mono text-emerald-400 font-bold text-xs focus:outline-none focus:border-emerald-500">
+                            <span class="text-slate-500 text-[10px]">mm</span>
+                        </div>
+                    </div>
+                    <input type="range" id="jambThickness" min="20" max="100" value="35" step="1" class="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-emerald-500">
+                </div>
+
+                <!-- Rebate Width -->
+                <div>
+                    <div class="flex justify-between items-center mb-1">
+                        <label for="rabbetWidth" class="font-medium text-slate-300">Rebate Width</label>
+                        <div class="flex items-center gap-1">
+                            <input type="number" id="rabbetWidthNum" value="55" class="w-14 bg-slate-950 border border-slate-700 rounded px-1.5 py-0.5 text-right font-mono text-emerald-400 font-bold text-xs focus:outline-none focus:border-emerald-500">
+                            <span class="text-slate-500 text-[10px]">mm</span>
+                        </div>
+                    </div>
+                    <input type="range" id="rabbetWidth" min="10" max="100" value="55" step="1" class="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-emerald-500">
+                </div>
+
+                <!-- Rebate Height / Depth -->
+                <div>
+                    <div class="flex justify-between items-center mb-1">
+                        <label for="rabbetDepth" class="font-medium text-slate-300">Rebate Height (Depth)</label>
+                        <div class="flex items-center gap-1">
+                            <input type="number" id="rabbetDepthNum" value="15" class="w-14 bg-slate-950 border border-slate-700 rounded px-1.5 py-0.5 text-right font-mono text-emerald-400 font-bold text-xs focus:outline-none focus:border-emerald-500">
+                            <span class="text-slate-500 text-[10px]">mm</span>
+                        </div>
+                    </div>
+                    <input type="range" id="rabbetDepth" min="4" max="40" value="15" step="1" class="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-emerald-500">
+                </div>
+            </div>
+
+            <!-- Global Lining Settings (Color) -->
+            <div class="bg-slate-800/50 p-3 rounded-xl border border-slate-700/50 flex items-center justify-between">
+                <span class="font-bold text-[11px] uppercase tracking-wider text-amber-400">Brown L-Shape Linings Color</span>
+                <div class="flex items-center gap-2">
+                    <span id="liningColorHex" class="font-mono text-slate-400 text-[10px]">#795548</span>
+                    <input type="color" id="liningColor" value="#795548" class="w-6 h-6 rounded cursor-pointer p-0 bg-transparent border-0">
+                </div>
+            </div>
+
+            <!-- Left L-Shape Lining & Groove Assembly -->
+            <div class="bg-slate-800/50 p-3 rounded-xl border border-slate-700/50 space-y-3">
+                <span class="font-bold text-[11px] uppercase tracking-wider block border-b border-slate-700/50 pb-1.5 text-sky-400">Left Side Assembly & Groove</span>
+
+                <!-- Left Groove Sunken Height -->
+                <div>
+                    <div class="flex justify-between items-center mb-1">
+                        <label for="leftGrooveHeight" class="font-medium text-slate-300">Groove Sunken Height</label>
+                        <span id="leftGrooveHeightVal" class="font-mono text-sky-400 font-bold">6 mm</span>
+                    </div>
+                    <input type="range" id="leftGrooveHeight" min="2" max="30" value="6" step="0.5" class="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-sky-500">
+                </div>
+
+                <!-- Left Groove Sunken Width/Depth -->
+                <div>
+                    <div class="flex justify-between items-center mb-1">
+                        <label for="leftGrooveWidth" class="font-medium text-slate-300">Groove Sunken Depth</label>
+                        <span id="leftGrooveWidthVal" class="font-mono text-sky-400 font-bold">22 mm</span>
+                    </div>
+                    <input type="range" id="leftGrooveWidth" min="5" max="40" value="22" step="1" class="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-sky-500">
+                </div>
+
+                <!-- Left Groove & Tongue Position Up/Down -->
+                <div>
+                    <div class="flex justify-between items-center mb-1">
+                        <label for="leftGroovePosY" class="font-medium text-slate-300">Vertical Offset (Up/Down)</label>
+                        <span id="leftGroovePosYVal" class="font-mono text-sky-400 font-bold">6 mm</span>
+                    </div>
+                    <input type="range" id="leftGroovePosY" min="-25" max="25" value="6" step="0.5" class="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-sky-500">
+                </div>
+
+                <!-- Left Tongue Thickness -->
+                <div>
+                    <div class="flex justify-between items-center mb-1">
+                        <label for="leftTongueThick" class="font-medium text-slate-300">Tongue Thickness</label>
+                        <span id="leftTongueThickVal" class="font-mono text-sky-400 font-bold">5 mm</span>
+                    </div>
+                    <input type="range" id="leftTongueThick" min="2" max="30" value="5" step="0.5" class="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-sky-500">
+                </div>
+
+                <!-- Left L-Shape Width -->
+                <div>
+                    <div class="flex justify-between items-center mb-1">
+                        <label for="leftLiningWidth" class="font-medium text-slate-300">Lining Leg Width</label>
+                        <span id="leftLiningWidthVal" class="font-mono text-sky-400 font-bold">20 mm</span>
+                    </div>
+                    <input type="range" id="leftLiningWidth" min="10" max="60" value="20" step="1" class="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-sky-500">
+                </div>
+
+                <!-- Left L-Shape Height -->
+                <div>
+                    <div class="flex justify-between items-center mb-1">
+                        <label for="leftLiningHeight" class="font-medium text-slate-300">Lining Upright Height</label>
+                        <span id="leftLiningHeightVal" class="font-mono text-sky-400 font-bold">50 mm</span>
+                    </div>
+                    <input type="range" id="leftLiningHeight" min="20" max="200" value="50" step="1" class="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-sky-500">
+                </div>
+            </div>
+
+            <!-- Right L-Shape Lining & Groove Assembly -->
+            <div class="bg-slate-800/50 p-3 rounded-xl border border-slate-700/50 space-y-3">
+                <span class="font-bold text-[11px] uppercase tracking-wider block border-b border-slate-700/50 pb-1.5 text-amber-400">Right Side Assembly & Groove</span>
+
+                <!-- Right Groove Sunken Height -->
+                <div>
+                    <div class="flex justify-between items-center mb-1">
+                        <label for="rightGrooveHeight" class="font-medium text-slate-300">Groove Sunken Height</label>
+                        <span id="rightGrooveHeightVal" class="font-mono text-amber-400 font-bold">6 mm</span>
+                    </div>
+                    <input type="range" id="rightGrooveHeight" min="2" max="30" value="6" step="0.5" class="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-amber-500">
+                </div>
+
+                <!-- Right Groove Sunken Width/Depth -->
+                <div>
+                    <div class="flex justify-between items-center mb-1">
+                        <label for="rightGrooveWidth" class="font-medium text-slate-300">Groove Sunken Depth</label>
+                        <span id="rightGrooveWidthVal" class="font-mono text-amber-400 font-bold">22 mm</span>
+                    </div>
+                    <input type="range" id="rightGrooveWidth" min="5" max="40" value="22" step="1" class="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-amber-500">
+                </div>
+
+                <!-- Right Groove & Tongue Position Up/Down -->
+                <div>
+                    <div class="flex justify-between items-center mb-1">
+                        <label for="rightGroovePosY" class="font-medium text-slate-300">Vertical Offset (Up/Down)</label>
+                        <span id="rightGroovePosYVal" class="font-mono text-amber-400 font-bold">-8 mm</span>
+                    </div>
+                    <input type="range" id="rightGroovePosY" min="-25" max="25" value="-8" step="0.5" class="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-amber-500">
+                </div>
+
+                <!-- Right Tongue Thickness -->
+                <div>
+                    <div class="flex justify-between items-center mb-1">
+                        <label for="rightTongueThick" class="font-medium text-slate-300">Tongue Thickness</label>
+                        <span id="rightTongueThickVal" class="font-mono text-amber-400 font-bold">5 mm</span>
+                    </div>
+                    <input type="range" id="rightTongueThick" min="2" max="30" value="5" step="0.5" class="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-amber-500">
+                </div>
+
+                <!-- Right L-Shape Width -->
+                <div>
+                    <div class="flex justify-between items-center mb-1">
+                        <label for="rightLiningWidth" class="font-medium text-slate-300">Lining Leg Width</label>
+                        <span id="rightLiningWidthVal" class="font-mono text-amber-400 font-bold">20 mm</span>
+                    </div>
+                    <input type="range" id="rightLiningWidth" min="10" max="60" value="20" step="1" class="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-amber-500">
+                </div>
+
+                <!-- Right L-Shape Height -->
+                <div>
+                    <div class="flex justify-between items-center mb-1">
+                        <label for="rightLiningHeight" class="font-medium text-slate-300">Lining Upright Height</label>
+                        <span id="rightLiningHeightVal" class="font-mono text-amber-400 font-bold">52 mm</span>
+                    </div>
+                    <input type="range" id="rightLiningHeight" min="20" max="200" value="52" step="1" class="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-amber-500">
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Main Three.js Interactive Logic Script -->
+    <script>
+        // --- 1. PARAMETERS & EXACT SCREENSHOT DEFAULTS ---
+        const defaultParams = {
+            jambWidth: 108,         // Central jamb width (mm)
+            jambHeight: 35,         // Central jamb main thickness (mm)
+            rabbetWidth: 55,        // Rebate step width (mm)
+            rabbetDepth: 15,        // Rebate step height/depth (mm)
+            
+            // Left Assembly
+            leftGrooveHeight: 6,    // Slot height (mm)
+            leftGrooveWidth: 22,    // Slot depth into jamb (mm)
+            leftGroovePosY: 6,      // Vertical position offset (mm)
+            leftTongueThick: 5,     // Tongue thickness (mm)
+            leftLiningWidth: 20,    // L-shape horizontal leg width (mm)
+            leftLiningHeight: 50,   // L-shape vertical leg height (mm)
+            
+            // Right Assembly
+            rightGrooveHeight: 6,   // Slot height (mm)
+            rightGrooveWidth: 22,   // Slot depth into jamb (mm)
+            rightGroovePosY: -8,    // Vertical position offset (mm)
+            rightTongueThick: 5,    // Tongue thickness (mm)
+            rightLiningWidth: 20,   // L-shape horizontal leg width (mm)
+            rightLiningHeight: 52,  // L-shape vertical leg height (mm)
+
+            // Colors & Display States
+            jambColor: '#ECF9EC',
+            liningColor: '#795548',
+            darkBg: true,
+            wireframe: false,
+            showDimensions: true,
+            showGrooves: false,
+            showLinings: false,
+            autoRotate: false
+        };
+
+        let params = { ...defaultParams };
+        const extrusionDepth = 150; // Length of 3D profile section along Z axis
+
+        // --- 2. THREE.JS INITIALIZATION ---
+        const container = document.getElementById('webgl-container');
+        const labelsContainer = document.getElementById('labels-container');
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0a0f1d); // Deep slate dark background matching images
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 2000);
+        camera.position.set(-80, 100, 320);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        container.appendChild(renderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.maxDistance = 1000;
+        controls.minDistance = 50;
+        controls.autoRotate = false;
+        controls.autoRotateSpeed = 2.0;
+
+        // Lighting setup
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.75);
+        scene.add(ambientLight);
+
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.85);
+        dirLight.position.set(120, 200, 150);
+        dirLight.castShadow = true;
+        dirLight.shadow.mapSize.width = 2048;
+        dirLight.shadow.mapSize.height = 2048;
+        dirLight.shadow.bias = -0.0001;
+        scene.add(dirLight);
+
+        const dirLightBack = new THREE.DirectionalLight(0xffffff, 0.35);
+        dirLightBack.position.set(-120, -100, -150);
+        scene.add(dirLightBack);
+
+        // --- 3. DYNAMIC 3D GEOMETRY GENERATOR ---
+        let mainJambGroup, leftLiningGroup, rightLiningGroup, dimensionLinesGroup;
+        let mainJambMesh, leftLiningMesh, rightLiningMesh;
+        let htmlLabels = [];
+
+        function clearHtmlLabels() {
+            labelsContainer.innerHTML = '';
+            htmlLabels = [];
+        }
+
+        function createLabel(text, position, colorClass = "bg-slate-900/80 text-white border border-slate-700") {
+            const el = document.createElement('div');
+            el.className = `dim-label ${colorClass}`;
+            el.innerText = text;
+            labelsContainer.appendChild(el);
+            htmlLabels.push({ element: el, pos: position.clone() });
+        }
+
+        function rebuildAllGeometries() {
+            // Remove existing meshes & components
+            if (mainJambGroup) scene.remove(mainJambGroup);
+            if (leftLiningGroup) scene.remove(leftLiningGroup);
+            if (rightLiningGroup) scene.remove(rightLiningGroup);
+            if (dimensionLinesGroup) scene.remove(dimensionLinesGroup);
+            clearHtmlLabels();
+
+            const extrudeSettings = {
+                steps: 1,
+                depth: extrusionDepth,
+                bevelEnabled: true,
+                bevelThickness: 0.5,
+                bevelSize: 0.5,
+                bevelSegments: 2
+            };
+
+            const W = params.jambWidth;
+            const H = params.jambHeight;
+            const halfW = W / 2;
+
+            const effRabbetWidth = Math.min(params.rabbetWidth, W - 10);
+            const effRabbetDepth = Math.min(params.rabbetDepth, H - 5);
+
+            // Groove slot vertical center calculations
+            const baseLeftSlotCenterY = -H / 2 + effRabbetDepth + 3 + params.leftGrooveHeight / 2;
+            const leftSlotCenterY = Math.max(-H / 2 + params.leftGrooveHeight / 2 + 1, Math.min(H / 2 - params.leftGrooveHeight / 2 - 1, baseLeftSlotCenterY + params.leftGroovePosY));
+            const leftSlotBottomY = leftSlotCenterY - params.leftGrooveHeight / 2;
+            const leftSlotTopY = leftSlotCenterY + params.leftGrooveHeight / 2;
+
+            const baseRightSlotCenterY = H / 2 - 8 - params.rightGrooveHeight / 2;
+            const rightSlotCenterY = Math.max(-H / 2 + params.rightGrooveHeight / 2 + 1, Math.min(H / 2 - params.rightGrooveHeight / 2 - 1, baseRightSlotCenterY + params.rightGroovePosY));
+            const rightSlotBottomY = rightSlotCenterY - params.rightGrooveHeight / 2;
+            const rightSlotTopY = rightSlotCenterY + params.rightGrooveHeight / 2;
+
+            // Insertion length of lining tongue into jamb groove
+            const leftInsertLen = params.leftGrooveWidth * 0.95;
+            const rightInsertLen = params.rightGrooveWidth * 0.95;
+
+            // --- A. CENTRAL LIGHT MINT GREEN JAMB PROFILE ---
+            const jambShape = new THREE.Shape();
+            
+            // Top horizontal edge
+            jambShape.moveTo(-halfW, H / 2);
+            jambShape.lineTo(halfW, H / 2);
+
+            // Right sunken slot (only cut when showGrooves is enabled)
+            if (params.showGrooves) {
+                jambShape.lineTo(halfW, rightSlotTopY);
+                jambShape.lineTo(halfW - params.rightGrooveWidth, rightSlotTopY);
+                jambShape.lineTo(halfW - params.rightGrooveWidth, rightSlotBottomY);
+                jambShape.lineTo(halfW, rightSlotBottomY);
+            }
+
+            // Right outer edge down to bottom
+            jambShape.lineTo(halfW, -H / 2);
+
+            // Bottom door rebate step contour
+            const rabbetStartX = halfW - effRabbetWidth;
+            jambShape.lineTo(rabbetStartX, -H / 2);
+            jambShape.lineTo(rabbetStartX, -H / 2 + effRabbetDepth);
+            jambShape.lineTo(-halfW, -H / 2 + effRabbetDepth);
+
+            // Left sunken slot (only cut when showGrooves is enabled)
+            if (params.showGrooves) {
+                jambShape.lineTo(-halfW, leftSlotBottomY);
+                jambShape.lineTo(-halfW + params.leftGrooveWidth, leftSlotBottomY);
+                jambShape.lineTo(-halfW + params.leftGrooveWidth, leftSlotTopY);
+                jambShape.lineTo(-halfW, leftSlotTopY);
+            }
+
+            // Complete shape to top left
+            jambShape.lineTo(-halfW, H / 2);
+
+            const jambGeometry = new THREE.ExtrudeGeometry(jambShape, extrudeSettings);
+            jambGeometry.center();
+
+            const jambMaterial = new THREE.MeshStandardMaterial({
+                color: params.jambColor,
+                roughness: 0.35,
+                metalness: 0.05,
+                wireframe: params.wireframe
+            });
+
+            mainJambMesh = new THREE.Mesh(jambGeometry, jambMaterial);
+            mainJambMesh.castShadow = true;
+            mainJambMesh.receiveShadow = true;
+
+            mainJambGroup = new THREE.Group();
+            mainJambGroup.add(mainJambMesh);
+
+            // Outline green edge geometry matching screenshot style
+            const jambEdges = new THREE.EdgesGeometry(jambGeometry);
+            const lineMat = new THREE.LineBasicMaterial({ color: 0x22c55e, linewidth: 1.5 });
+            const jambWire = new THREE.LineSegments(jambEdges, lineMat);
+            mainJambGroup.add(jambWire);
+
+            scene.add(mainJambGroup);
+
+            // --- B. LEFT & RIGHT L-SHAPED LININGS ---
+            if (params.showLinings) {
+                // Shared Lining Material
+                const liningMaterial = new THREE.MeshStandardMaterial({
+                    color: params.liningColor,
+                    roughness: 0.4,
+                    metalness: 0.05,
+                    wireframe: params.wireframe
+                });
+                const liningLineMat = new THREE.LineBasicMaterial({ color: 0x3e2723, linewidth: 1.5 });
+
+                // LEFT L-SHAPED LINING
+                const leftLiningShape = new THREE.Shape();
+                const leftTongueHalf = params.leftTongueThick / 2;
+                
+                leftLiningShape.moveTo(0, leftTongueHalf);
+                leftLiningShape.lineTo(-leftInsertLen, leftTongueHalf);
+                leftLiningShape.lineTo(-leftInsertLen, params.leftLiningHeight);
+                leftLiningShape.lineTo(-leftInsertLen - params.leftLiningWidth, params.leftLiningHeight);
+                leftLiningShape.lineTo(-leftInsertLen - params.leftLiningWidth, -leftTongueHalf);
+                leftLiningShape.lineTo(0, -leftTongueHalf);
+                leftLiningShape.closePath();
+
+                const leftLiningGeo = new THREE.ExtrudeGeometry(leftLiningShape, extrudeSettings);
+                leftLiningGeo.center();
+
+                leftLiningMesh = new THREE.Mesh(leftLiningGeo, liningMaterial);
+                leftLiningMesh.castShadow = true;
+                leftLiningMesh.receiveShadow = true;
+
+                leftLiningGroup = new THREE.Group();
+                leftLiningGroup.add(leftLiningMesh);
+                leftLiningGroup.add(new THREE.LineSegments(new THREE.EdgesGeometry(leftLiningGeo), liningLineMat));
+
+                const leftSlotCenterX = -halfW + (params.leftGrooveWidth / 2);
+                leftLiningGroup.position.set(
+                    leftSlotCenterX - (leftInsertLen / 2 + params.leftLiningWidth / 2 - (params.leftGrooveWidth - leftInsertLen / 2)),
+                    leftSlotCenterY + (params.leftLiningHeight / 2 - leftTongueHalf),
+                    0
+                );
+                scene.add(leftLiningGroup);
+
+                // RIGHT L-SHAPED LINING
+                const rightLiningShape = new THREE.Shape();
+                const rightTongueHalf = params.rightTongueThick / 2;
+
+                rightLiningShape.moveTo(0, rightTongueHalf);
+                rightLiningShape.lineTo(rightInsertLen, rightTongueHalf);
+                rightLiningShape.lineTo(rightInsertLen, params.rightLiningHeight);
+                rightLiningShape.lineTo(rightInsertLen + params.rightLiningWidth, params.rightLiningHeight);
+                rightLiningShape.lineTo(rightInsertLen + params.rightLiningWidth, -rightTongueHalf);
+                rightLiningShape.lineTo(0, -rightTongueHalf);
+                rightLiningShape.closePath();
+
+                const rightLiningGeo = new THREE.ExtrudeGeometry(rightLiningShape, extrudeSettings);
+                rightLiningGeo.center();
+
+                rightLiningMesh = new THREE.Mesh(rightLiningGeo, liningMaterial);
+                rightLiningMesh.castShadow = true;
+                rightLiningMesh.receiveShadow = true;
+
+                rightLiningGroup = new THREE.Group();
+                rightLiningGroup.add(rightLiningMesh);
+                rightLiningGroup.add(new THREE.LineSegments(new THREE.EdgesGeometry(rightLiningGeo), liningLineMat));
+
+                const rightSlotCenterX = halfW - (params.rightGrooveWidth / 2);
+                rightLiningGroup.position.set(
+                    rightSlotCenterX + (rightInsertLen / 2 + params.rightLiningWidth / 2 - (params.rightGrooveWidth - rightInsertLen / 2)),
+                    rightSlotCenterY + (params.rightLiningHeight / 2 - rightTongueHalf),
+                    0
+                );
+                scene.add(rightLiningGroup);
+            } else {
+                leftLiningMesh = null;
+                rightLiningMesh = null;
+            }
+
+            // --- D. 3D DIMENSIONS OVERLAYS ---
+            if (params.showDimensions) {
+                buildDimensions(halfW, H, leftSlotCenterY, rightSlotCenterY, effRabbetWidth, effRabbetDepth);
+            }
+        }
+
+        // --- 4. 3D DIMENSION ARROWS AND LABELS ---
+        function buildDimensions(halfW, H, leftSlotCenterY, rightSlotCenterY, effRabbetWidth, effRabbetDepth) {
+            dimensionLinesGroup = new THREE.Group();
+            const zFront = extrusionDepth / 2 + 10;
+            const dimMat = new THREE.LineBasicMaterial({ color: 0x38bdf8, linewidth: 2, depthTest: false });
+
+            // Helper to draw dimensional arrows
+            function drawDimLine(p1, p2, text, colorClass = "bg-sky-950/90 text-sky-400 border border-sky-600/80") {
+                const geom = new THREE.BufferGeometry().setFromPoints([p1, p2]);
+                const line = new THREE.Line(geom, dimMat);
+                line.renderOrder = 999;
+                dimensionLinesGroup.add(line);
+
+                // Small tick marks
+                const dir = p2.clone().sub(p1).normalize();
+                const perp = new THREE.Vector3(-dir.y, dir.x, 0).multiplyScalar(3);
+                
+                const t1 = new THREE.BufferGeometry().setFromPoints([p1.clone().sub(perp), p1.clone().add(perp)]);
+                const t2 = new THREE.BufferGeometry().setFromPoints([p2.clone().sub(perp), p2.clone().add(perp)]);
+                const tick1 = new THREE.Line(t1, dimMat);
+                const tick2 = new THREE.Line(t2, dimMat);
+                tick1.renderOrder = 999;
+                tick2.renderOrder = 999;
+                dimensionLinesGroup.add(tick1);
+                dimensionLinesGroup.add(tick2);
+
+                const midPoint = p1.clone().add(p2).multiplyScalar(0.5);
+                createLabel(text, midPoint, colorClass);
+            }
+
+            // 1. Overall Green Jamb Width
+            drawDimLine(
+                new THREE.Vector3(-halfW, H / 2 + 25, zFront),
+                new THREE.Vector3(halfW, H / 2 + 25, zFront),
+                `Width: ${params.jambWidth} mm`,
+                "bg-emerald-950/90 text-emerald-300 border border-emerald-500"
+            );
+
+            // 2. Main Jamb Thickness
+            drawDimLine(
+                new THREE.Vector3(halfW + 40, -H / 2, zFront),
+                new THREE.Vector3(halfW + 40, H / 2, zFront),
+                `Thickness: ${params.jambHeight} mm`,
+                "bg-emerald-950/90 text-emerald-300 border border-emerald-500"
+            );
+
+            // 3. Rebate Width
+            drawDimLine(
+                new THREE.Vector3(halfW - effRabbetWidth, -H / 2 - 20, zFront),
+                new THREE.Vector3(halfW, -H / 2 - 20, zFront),
+                `Rebate W: ${effRabbetWidth} mm`
+            );
+
+            // 4. Rebate Depth / Height
+            drawDimLine(
+                new THREE.Vector3(-halfW - 25, -H / 2, zFront),
+                new THREE.Vector3(-halfW - 25, -H / 2 + effRabbetDepth, zFront),
+                `Rebate H: ${effRabbetDepth} mm`
+            );
+
+            // 5 & 6. Left & Right Groove Heights (only shown when grooves are visible)
+            if (params.showGrooves) {
+                drawDimLine(
+                    new THREE.Vector3(-halfW - 15, leftSlotCenterY - params.leftGrooveHeight / 2, zFront),
+                    new THREE.Vector3(-halfW - 15, leftSlotCenterY + params.leftGrooveHeight / 2, zFront),
+                    `L-Groove H: ${params.leftGrooveHeight} mm`,
+                    "bg-sky-950/90 text-sky-300 border border-sky-500"
+                );
+
+                drawDimLine(
+                    new THREE.Vector3(halfW + 15, rightSlotCenterY - params.rightGrooveHeight / 2, zFront),
+                    new THREE.Vector3(halfW + 15, rightSlotCenterY + params.rightGrooveHeight / 2, zFront),
+                    `R-Groove H: ${params.rightGrooveHeight} mm`,
+                    "bg-amber-950/90 text-amber-300 border border-amber-500"
+                );
+            }
+
+            scene.add(dimensionLinesGroup);
+        }
+
+        // Project 3D vector coordinates into 2D canvas label coordinates
+        function updateLabelsPosition() {
+            if (!params.showDimensions) return;
+            const tempV = new THREE.Vector3();
+            htmlLabels.forEach(item => {
+                tempV.copy(item.pos);
+                tempV.project(camera);
+
+                if (tempV.z > 1) {
+                    item.element.style.opacity = '0';
+                    return;
+                }
+
+                const x = (tempV.x *  .5 + .5) * window.innerWidth;
+                const y = (tempV.y * -.5 + .5) * window.innerHeight;
+
+                item.element.style.transform = `translate(-50%, -100%) translate(${x}px,${y}px)`;
+                item.element.style.opacity = '1';
+            });
+        }
+
+        // --- 5. UI EVENT LISTENERS & BINDINGS ---
+        function setupUI() {
+            function bindControl(sliderId, numId, paramKey, valDisplayId = null, suffix = ' mm') {
+                const slider = document.getElementById(sliderId);
+                const num = numId ? document.getElementById(numId) : null;
+                const valDisplay = valDisplayId ? document.getElementById(valDisplayId) : null;
+
+                if (!slider) return;
+
+                slider.addEventListener('input', (e) => {
+                    const val = parseFloat(e.target.value);
+                    params[paramKey] = val;
+                    if (num) num.value = val;
+                    if (valDisplay) valDisplay.innerText = `${val}${suffix}`;
+                    rebuildAllGeometries();
+                });
+
+                if (num) {
+                    num.addEventListener('change', (e) => {
+                        let val = parseFloat(e.target.value);
+                        val = Math.max(parseFloat(slider.min), Math.min(parseFloat(slider.max), val));
+                        params[paramKey] = val;
+                        slider.value = val;
+                        num.value = val;
+                        if (valDisplay) valDisplay.innerText = `${val}${suffix}`;
+                        rebuildAllGeometries();
+                    });
+                }
+            }
+
+            // Bind Central Jamb Inputs
+            bindControl('jambWidth', 'jambWidthNum', 'jambWidth');
+            bindControl('jambThickness', 'jambThicknessNum', 'jambHeight');
+            bindControl('rabbetWidth', 'rabbetWidthNum', 'rabbetWidth');
+            bindControl('rabbetDepth', 'rabbetDepthNum', 'rabbetDepth');
+
+            // Bind Left Assembly Inputs
+            bindControl('leftGrooveHeight', null, 'leftGrooveHeight', 'leftGrooveHeightVal');
+            bindControl('leftGrooveWidth', null, 'leftGrooveWidth', 'leftGrooveWidthVal');
+            bindControl('leftGroovePosY', null, 'leftGroovePosY', 'leftGroovePosYVal');
+            bindControl('leftTongueThick', null, 'leftTongueThick', 'leftTongueThickVal');
+            bindControl('leftLiningWidth', null, 'leftLiningWidth', 'leftLiningWidthVal');
+            bindControl('leftLiningHeight', null, 'leftLiningHeight', 'leftLiningHeightVal');
+
+            // Bind Right Assembly Inputs
+            bindControl('rightGrooveHeight', null, 'rightGrooveHeight', 'rightGrooveHeightVal');
+            bindControl('rightGrooveWidth', null, 'rightGrooveWidth', 'rightGrooveWidthVal');
+            bindControl('rightGroovePosY', null, 'rightGroovePosY', 'rightGroovePosYVal');
+            bindControl('rightTongueThick', null, 'rightTongueThick', 'rightTongueThickVal');
+            bindControl('rightLiningWidth', null, 'rightLiningWidth', 'rightLiningWidthVal');
+            bindControl('rightLiningHeight', null, 'rightLiningHeight', 'rightLiningHeightVal');
+
+            // Color Pickers
+            const jambColorPicker = document.getElementById('jambColor');
+            jambColorPicker.addEventListener('input', (e) => {
+                params.jambColor = e.target.value;
+                document.getElementById('jambColorHex').innerText = e.target.value.toUpperCase();
+                if (mainJambMesh) mainJambMesh.material.color.set(params.jambColor);
+            });
+
+            const liningColorPicker = document.getElementById('liningColor');
+            liningColorPicker.addEventListener('input', (e) => {
+                params.liningColor = e.target.value;
+                document.getElementById('liningColorHex').innerText = e.target.value.toUpperCase();
+                if (leftLiningMesh) leftLiningMesh.material.color.set(params.liningColor);
+                if (rightLiningMesh) rightLiningMesh.material.color.set(params.liningColor);
+            });
+
+            // Preset Buttons
+            document.getElementById('btnPreset108').addEventListener('click', () => {
+                params.jambWidth = 108;
+                document.getElementById('jambWidth').value = 108;
+                document.getElementById('jambWidthNum').value = 108;
+                rebuildAllGeometries();
+            });
+
+            document.getElementById('btnResetParams').addEventListener('click', () => {
+                params = { ...defaultParams };
+                controls.autoRotate = params.autoRotate;
+                updateRotateButtonUI();
+                updateGroovesButtonUI();
+                updateLiningsButtonUI();
+                syncAllUIControls();
+                rebuildAllGeometries();
+            });
+
+            // Auto Rotation Toggle Button
+            const btnRotate = document.getElementById('btnRotate');
+            function updateRotateButtonUI() {
+                if (params.autoRotate) {
+                    btnRotate.className = "p-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs transition-colors shadow";
+                } else {
+                    btnRotate.className = "p-2 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg text-xs transition-colors";
+                }
+            }
+
+            btnRotate.addEventListener('click', () => {
+                params.autoRotate = !params.autoRotate;
+                controls.autoRotate = params.autoRotate;
+                updateRotateButtonUI();
+            });
+
+            // Toggle L & R Grooves Button
+            const btnToggleGrooves = document.getElementById('btnToggleGrooves');
+            function updateGroovesButtonUI() {
+                if (params.showGrooves) {
+                    btnToggleGrooves.className = "p-2 bg-sky-600 hover:bg-sky-500 text-white rounded-lg text-xs transition-colors font-semibold flex items-center gap-1";
+                    btnToggleGrooves.innerHTML = '<i class="fa-solid fa-eye-slash"></i> Grooves';
+                } else {
+                    btnToggleGrooves.className = "p-2 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-lg text-xs transition-colors font-semibold flex items-center gap-1";
+                    btnToggleGrooves.innerHTML = '<i class="fa-solid fa-eye"></i> Grooves';
+                }
+            }
+
+            btnToggleGrooves.addEventListener('click', () => {
+                params.showGrooves = !params.showGrooves;
+                updateGroovesButtonUI();
+                rebuildAllGeometries();
+            });
+
+            // Toggle Side Linings Button
+            const btnToggleLinings = document.getElementById('btnToggleLinings');
+            function updateLiningsButtonUI() {
+                if (params.showLinings) {
+                    btnToggleLinings.className = "p-2 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-xs transition-colors font-semibold flex items-center gap-1";
+                    btnToggleLinings.innerHTML = '<i class="fa-solid fa-eye-slash"></i> Linings';
+                } else {
+                    btnToggleLinings.className = "p-2 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-lg text-xs transition-colors font-semibold flex items-center gap-1";
+                    btnToggleLinings.innerHTML = '<i class="fa-solid fa-eye"></i> Linings';
+                }
+            }
+
+            btnToggleLinings.addEventListener('click', () => {
+                params.showLinings = !params.showLinings;
+                updateLiningsButtonUI();
+                rebuildAllGeometries();
+            });
+
+            // Toggle Dark / Light Background
+            document.getElementById('btnDarkBg').addEventListener('click', () => {
+                params.darkBg = !params.darkBg;
+                scene.background.set(params.darkBg ? 0x0a0f1d : 0xf8fafc);
+                const btn = document.getElementById('btnDarkBg');
+                btn.innerHTML = params.darkBg ? '<i class="fa-solid fa-moon"></i>' : '<i class="fa-solid fa-sun"></i>';
+            });
+
+            // Toggle Wireframe Mode
+            document.getElementById('btnWireframe').addEventListener('click', () => {
+                params.wireframe = !params.wireframe;
+                if (mainJambMesh) mainJambMesh.material.wireframe = params.wireframe;
+                if (leftLiningMesh) leftLiningMesh.material.wireframe = params.wireframe;
+                if (rightLiningMesh) rightLiningMesh.material.wireframe = params.wireframe;
+            });
+
+            // Toggle 3D Dimension Labels
+            document.getElementById('btnToggleDims').addEventListener('click', () => {
+                params.showDimensions = !params.showDimensions;
+                const btn = document.getElementById('btnToggleDims');
+                if (params.showDimensions) {
+                    btn.className = "p-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs transition-colors font-semibold flex items-center gap-1";
+                } else {
+                    btn.className = "p-2 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-lg text-xs transition-colors font-semibold flex items-center gap-1";
+                }
+                rebuildAllGeometries();
+            });
+        }
+
+        function syncAllUIControls() {
+            document.getElementById('jambWidth').value = params.jambWidth;
+            document.getElementById('jambWidthNum').value = params.jambWidth;
+            document.getElementById('jambThickness').value = params.jambHeight;
+            document.getElementById('jambThicknessNum').value = params.jambHeight;
+            document.getElementById('rabbetWidth').value = params.rabbetWidth;
+            document.getElementById('rabbetWidthNum').value = params.rabbetWidth;
+            document.getElementById('rabbetDepth').value = params.rabbetDepth;
+            document.getElementById('rabbetDepthNum').value = params.rabbetDepth;
+
+            document.getElementById('leftGrooveHeight').value = params.leftGrooveHeight;
+            document.getElementById('leftGrooveHeightVal').innerText = `${params.leftGrooveHeight} mm`;
+            document.getElementById('leftGrooveWidth').value = params.leftGrooveWidth;
+            document.getElementById('leftGrooveWidthVal').innerText = `${params.leftGrooveWidth} mm`;
+            document.getElementById('leftGroovePosY').value = params.leftGroovePosY;
+            document.getElementById('leftGroovePosYVal').innerText = `${params.leftGroovePosY} mm`;
+            document.getElementById('leftTongueThick').value = params.leftTongueThick;
+            document.getElementById('leftTongueThickVal').innerText = `${params.leftTongueThick} mm`;
+            document.getElementById('leftLiningWidth').value = params.leftLiningWidth;
+            document.getElementById('leftLiningWidthVal').innerText = `${params.leftLiningWidth} mm`;
+            document.getElementById('leftLiningHeight').value = params.leftLiningHeight;
+            document.getElementById('leftLiningHeightVal').innerText = `${params.leftLiningHeight} mm`;
+
+            document.getElementById('rightGrooveHeight').value = params.rightGrooveHeight;
+            document.getElementById('rightGrooveHeightVal').innerText = `${params.rightGrooveHeight} mm`;
+            document.getElementById('rightGrooveWidth').value = params.rightGrooveWidth;
+            document.getElementById('rightGrooveWidthVal').innerText = `${params.rightGrooveWidth} mm`;
+            document.getElementById('rightGroovePosY').value = params.rightGroovePosY;
+            document.getElementById('rightGroovePosYVal').innerText = `${params.rightGroovePosY} mm`;
+            document.getElementById('rightTongueThick').value = params.rightTongueThick;
+            document.getElementById('rightTongueThickVal').innerText = `${params.rightTongueThick} mm`;
+            document.getElementById('rightLiningWidth').value = params.rightLiningWidth;
+            document.getElementById('rightLiningWidthVal').innerText = `${params.rightLiningWidth} mm`;
+            document.getElementById('rightLiningHeight').value = params.rightLiningHeight;
+            document.getElementById('rightLiningHeightVal').innerText = `${params.rightLiningHeight} mm`;
+
+            document.getElementById('jambColor').value = params.jambColor;
+            document.getElementById('jambColorHex').innerText = params.jambColor.toUpperCase();
+            document.getElementById('liningColor').value = params.liningColor;
+            document.getElementById('liningColorHex').innerText = params.liningColor.toUpperCase();
+        }
+
+        // Window resize handler
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // --- 6. INITIALIZATION & ANIMATION LOOP ---
+        window.onload = function () {
+            setupUI();
+            rebuildAllGeometries();
+
+            function animate() {
+                requestAnimationFrame(animate);
+                controls.update();
+                updateLabelsPosition();
+                renderer.render(scene, camera);
+            }
+            animate();
+        };
+    </script>
+</body>
+</html>
